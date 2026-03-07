@@ -9,3 +9,6 @@ task-manager-api-*.json
 !package.json
 !package-lock.json
 !tsconfig.json
+
+# Local Netlify folder
+.netlify

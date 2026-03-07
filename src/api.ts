@@ -10,8 +10,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     ...options,
     headers: { 'Content-Type': 'application/json', ...options.headers },
   });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as { error?: string }).error || res.statusText || 'Request failed');
+  const raw = await res.text();
+  let data: unknown = {};
+  try {
+    data = raw ? JSON.parse(raw) : {};
+  } catch {
+    // non-JSON response
+  }
+  const errMsg = (data as { error?: string }).error || res.statusText || `Request failed (${res.status})`;
+  if (!res.ok) throw new Error(errMsg);
   return data as T;
 }
 

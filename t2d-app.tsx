@@ -4,16 +4,28 @@ import * as api from "./src/api";
 type Task = api.Task;
 type ColorTag = api.ColorTag;
 
-const DEFAULT_COLORS: ColorTag[] = [
-  { id:"red",    label:"Urgent",  bg:"#FEE2E2", border:"#EF4444", dot:"#EF4444" },
-  { id:"orange", label:"BDA",     bg:"#FEF3C7", border:"#F59E0B", dot:"#F59E0B" },
-  { id:"blue",   label:"Home",    bg:"#DBEAFE", border:"#3B82F6", dot:"#3B82F6" },
-  { id:"green",  label:"Calls",   bg:"#D1FAE5", border:"#10B981", dot:"#10B981" },
-  { id:"purple", label:"Email",   bg:"#EDE9FE", border:"#8B5CF6", dot:"#8B5CF6" },
-  { id:"gray",   label:"Other",   bg:"#F3F4F6", border:"#6B7280", dot:"#6B7280" },
-];
+const FALLBACK_COLOR: ColorTag = { id: 'gray', label: 'Other', bg: '#F3F4F6', border: '#6B7280', dot: '#6B7280' };
 
 const PRESET_COLORS = ["#EF4444","#F59E0B","#10B981","#3B82F6","#8B5CF6","#6B7280","#EC4899","#06B6D4","#F97316","#84CC16","#14B8A6","#A855F7"];
+
+/** Returns a light pastel background that matches the accent color (always readable with dark text). */
+function hexToLightTint(hex: string): string {
+  const n = hex.replace(/^#/, "").slice(0, 6);
+  if (n.length !== 6) return hex + "22";
+  const r = parseInt(n.slice(0, 2), 16), g = parseInt(n.slice(2, 4), 16), b = parseInt(n.slice(4, 6), 16);
+  const r2 = Math.round(255 * 0.88 + r * 0.12), g2 = Math.round(255 * 0.88 + g * 0.12), b2 = Math.round(255 * 0.88 + b * 0.12);
+  return "#" + [r2, g2, b2].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+/** Returns text color (dark or light) that contrasts with the background. */
+function contrastTextColor(hex: string): string {
+  const n = (hex.length === 9 ? hex.slice(0, 7) : hex).replace(/^#/, "").slice(0, 6);
+  if (n.length !== 6) return "#1a1a2e";
+  const r = parseInt(n.slice(0, 2), 16) / 255, g = parseInt(n.slice(2, 4), 16) / 255, b = parseInt(n.slice(4, 6), 16) / 255;
+  const L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return L > 0.5 ? "#1a1a2e" : "#ffffff";
+}
+
 const RECUR_OPTIONS = ["none","daily","weekdays","weekly","biweekly","monthly"];
 const RECUR_LABELS  = ["None","Daily","Weekdays","Weekly","Bi-weekly","Monthly"];
 const SNOOZE_OPTIONS = [
@@ -100,8 +112,8 @@ function ColorEditor({colors,onChange,onClose}: {colors: ColorTag[]; onChange: (
   const [local,setLocal]=useState(colors.map((c: ColorTag)=>({...c})));
   const [editIdx,setEditIdx]=useState<number | null>(null);
   const update=(i: number,patch: Partial<ColorTag>)=>setLocal(p=>p.map((c,j)=>j===i?{...c,...patch}:c));
-  const pickColor=(i: number,hex: string)=>update(i,{border:hex,dot:hex,bg:hex+"22"});
-  const addNew=()=>{ const id=`custom${Date.now()}`; setLocal(p=>[...p,{id,label:"New Tag",bg:"#6366F122",border:"#6366F1",dot:"#6366F1"}]); };
+  const pickColor=(i: number,hex: string)=>update(i,{border:hex,dot:hex,bg:hexToLightTint(hex)});
+  const addNew=()=>{ const id=`custom${Date.now()}`; const border="#6366F1"; setLocal(p=>[...p,{id,label:"New Tag",bg:hexToLightTint(border),border,dot:border}]); };
   const remove=(i: number)=>setLocal(p=>p.filter((_: ColorTag,j: number)=>j!==i));
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:2000,display:"flex",alignItems:"center",justifyContent:"center"}} onClick={onClose}>
@@ -111,7 +123,9 @@ function ColorEditor({colors,onChange,onClose}: {colors: ColorTag[]; onChange: (
           <button onClick={onClose} style={{background:"none",border:"none",color:"#666",fontSize:22,cursor:"pointer"}}>×</button>
         </div>
         <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-          {local.map((c: ColorTag,i: number)=>(
+          {local.map((c: ColorTag,i: number)=>{
+            const textOnBg=contrastTextColor(c.bg);
+            return (
             <div key={c.id} style={{background:c.bg,border:`1.5px solid ${c.border}`,borderRadius:10,padding:"10px 14px",display:"flex",alignItems:"center",gap:10}}>
               <div style={{position:"relative",flexShrink:0}}>
                 <button onClick={()=>setEditIdx(editIdx===i?null:i)} style={{width:24,height:24,borderRadius:"50%",background:c.border,border:"2px solid rgba(255,255,255,.3)",cursor:"pointer"}} title="Change color"/>
@@ -124,11 +138,11 @@ function ColorEditor({colors,onChange,onClose}: {colors: ColorTag[]; onChange: (
                   </div>
                 )}
               </div>
-              <input value={c.label} onChange={e=>update(i,{label:e.target.value})} style={{flex:1,background:"transparent",border:"none",fontSize:14,fontWeight:700,color:"#1a1a2e",outline:"none",fontFamily:"inherit"}} maxLength={20}/>
+              <input value={c.label} onChange={e=>update(i,{label:e.target.value})} style={{flex:1,background:"transparent",border:"none",fontSize:14,fontWeight:700,color:textOnBg,outline:"none",fontFamily:"inherit"}} maxLength={20}/>
               <span style={{fontSize:11,color:c.border,fontWeight:600,flexShrink:0}}>{c.border}</span>
-              {local.length>1&&<button onClick={()=>remove(i)} style={{background:"none",border:"none",color:"rgba(0,0,0,.25)",cursor:"pointer",fontSize:18,lineHeight:1,padding:0}}>×</button>}
+              {local.length>1&&<button onClick={()=>remove(i)} style={{background:"none",border:"none",color:textOnBg,opacity:0.6,cursor:"pointer",fontSize:18,lineHeight:1,padding:0}}>×</button>}
             </div>
-          ))}
+          );})}
         </div>
         <button onClick={addNew} style={{width:"100%",background:"rgba(99,102,241,.15)",color:"#a5b4fc",border:"1px dashed #6366F1",borderRadius:10,padding:"10px 0",fontWeight:700,cursor:"pointer",fontSize:14,marginBottom:16}}>+ Add New Tag</button>
         <div style={{display:"flex",gap:8}}>
@@ -141,12 +155,17 @@ function ColorEditor({colors,onChange,onClose}: {colors: ColorTag[]; onChange: (
 }
 
 function TaskDrawer({task,colors,onClose,onUpdate,onComplete,onSnooze}: {task: Task; colors: ColorTag[]; onClose: ()=>void; onUpdate: (id: string,patch: Partial<Task>)=>void; onComplete: (id: string,e?: React.MouseEvent)=>void; onSnooze: (id: string,until: number)=>void}){
-  const c=colors.find((x: ColorTag)=>x.id===task.color)||colors[0];
+  const c=colors.find((x: ColorTag)=>x.id===task.color)||colors[0]||FALLBACK_COLOR;
   const [notes,setNotes]=useState(task.notes||"");
   const [newSub,setNewSub]=useState("");
   const [editText,setEditText]=useState(task.text);
   const [editDue,setEditDue]=useState(task.due||"");
   const [showSnooze,setShowSnooze]=useState(false);
+  useEffect(()=>{
+    setNotes(task.notes||"");
+    setEditText(task.text);
+    setEditDue(task.due||"");
+  },[task.id,task.notes,task.text,task.due]);
   const save=(patch={})=>onUpdate(task.id,{notes,text:editText,due:editDue||null,...patch});
   const addSub=()=>{ if(!newSub.trim()) return; onUpdate(task.id,{subtasks:[...task.subtasks,{id:`s${Date.now()}`,text:newSub.trim(),done:false}]}); setNewSub(""); };
   const toggleSub=(sid: string)=>onUpdate(task.id,{subtasks:task.subtasks.map(s=>s.id===sid?{...s,done:!s.done}:s)});
@@ -161,10 +180,10 @@ function TaskDrawer({task,colors,onClose,onUpdate,onComplete,onSnooze}: {task: T
       <div onClick={e=>e.stopPropagation()} style={{width:430,background:"#1a1a2a",height:"100%",overflowY:"auto",boxShadow:"-8px 0 32px rgba(0,0,0,.5)",display:"flex",flexDirection:"column"}}>
         <div style={{background:c.bg,padding:"20px 20px 16px",borderBottom:`3px solid ${c.border}`}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-            <textarea value={editText} onChange={e=>setEditText(e.target.value)} onBlur={()=>save()} style={{flex:1,background:"transparent",border:"none",fontSize:16,fontWeight:700,color:"#1a1a2e",resize:"none",outline:"none",lineHeight:1.4,fontFamily:"inherit"}} rows={2}/>
+            <textarea value={editText} onChange={e=>setEditText(e.target.value)} onBlur={()=>save()} style={{flex:1,background:"transparent",border:"none",fontSize:16,fontWeight:700,color:contrastTextColor(c.bg),resize:"none",outline:"none",lineHeight:1.4,fontFamily:"inherit"}} rows={2}/>
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
               <button onClick={()=>onUpdate(task.id,{starred:!task.starred})} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",opacity:task.starred?1:.3}}>⭐</button>
-              <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,color:"#999",cursor:"pointer"}}>×</button>
+              <button onClick={onClose} style={{background:"none",border:"none",fontSize:20,color:contrastTextColor(c.bg),opacity:0.7,cursor:"pointer"}}>×</button>
             </div>
           </div>
           <div style={{display:"flex",gap:8,alignItems:"center",marginTop:8,flexWrap:"wrap"}}>
@@ -172,11 +191,11 @@ function TaskDrawer({task,colors,onClose,onUpdate,onComplete,onSnooze}: {task: T
             <AgeTag age={age}/>
             {dl&&dc&&<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:20,background:dc,color:"#fff"}}>📅 {dl}</span>}
             {sl&&<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:20,background:"#312e81",color:"#a5b4fc"}}>💤 {sl}</span>}
-            <input type="date" value={editDue} onChange={e=>{setEditDue(e.target.value);onUpdate(task.id,{due:e.target.value||null});}} style={{fontSize:11,border:"1px solid rgba(0,0,0,.15)",borderRadius:6,padding:"2px 6px",background:"rgba(255,255,255,.5)",color:"#1a1a2e"}}/>
+            <input type="date" value={editDue} onChange={e=>{setEditDue(e.target.value);onUpdate(task.id,{due:e.target.value||null});}} style={{fontSize:11,border:"1px solid rgba(0,0,0,.2)",borderRadius:6,padding:"2px 6px",background:"rgba(255,255,255,.5)",color:contrastTextColor(c.bg)}}/>
           </div>
           <div style={{marginTop:10,display:"flex",alignItems:"center",gap:8}}>
-            <span style={{fontSize:11,color:"#888"}}>🔁</span>
-            <select value={task.recur||"none"} onChange={e=>onUpdate(task.id,{recur:e.target.value})} style={{background:"rgba(255,255,255,.5)",border:"1px solid rgba(0,0,0,.15)",borderRadius:6,padding:"3px 8px",fontSize:11,color:"#1a1a2e",cursor:"pointer"}}>
+            <span style={{fontSize:11,color:contrastTextColor(c.bg),opacity:0.8}}>🔁</span>
+            <select value={task.recur||"none"} onChange={e=>onUpdate(task.id,{recur:e.target.value})} style={{background:"rgba(255,255,255,.5)",border:"1px solid rgba(0,0,0,.2)",borderRadius:6,padding:"3px 8px",fontSize:11,color:contrastTextColor(c.bg),cursor:"pointer"}}>
               {RECUR_OPTIONS.map((o,i)=><option key={o} value={o}>{RECUR_LABELS[i]}</option>)}
             </select>
           </div>
@@ -272,18 +291,8 @@ const now=()=>Date.now();
 let idC=20; const uid=()=>`t${++idC}`;
 
 export default function App(){
-  const INIT_TASKS: Task[] = [
-    {id:"t1",text:"Find some networks for the BDA call",color:"orange",done:false,bucket:"urgent",points:1,createdAt:now()-25*60000,due:null,notes:"",subtasks:[],recur:"none",completedAt:null,snoozedUntil:null,starred:false},
-    {id:"t2",text:"Email the AM call contacts",color:"purple",done:false,bucket:"urgent",points:2,createdAt:now()-90*60000,due:null,notes:"",subtasks:[],recur:"none",completedAt:null,snoozedUntil:null,starred:false},
-    {id:"t3",text:"Fw: Eitan Benay contract review",color:"red",done:false,bucket:"urgent",points:3,createdAt:now()-200*60000,due:null,notes:"Check section 4",subtasks:[{id:"s1",text:"Read section 4",done:false},{id:"s2",text:"Reply with comments",done:false}],recur:"none",completedAt:null,snoozedUntil:null,starred:true},
-    {id:"t4",text:"Voicemails — return all 3",color:"green",done:false,bucket:"tasks",points:1,createdAt:now()-400*60000,due:null,notes:"",subtasks:[],recur:"daily",completedAt:null,snoozedUntil:null,starred:false},
-    {id:"t5",text:"Call Natalia 437-972-3...",color:"green",done:false,bucket:"tasks",points:1,createdAt:now()-1500*60000,due:null,notes:"",subtasks:[],recur:"none",completedAt:null,snoozedUntil:null,starred:false},
-    {id:"t6",text:"Pick up dry cleaning",color:"blue",done:false,bucket:"procrastinating",points:1,createdAt:now()-5000*60000,due:null,notes:"",subtasks:[],recur:"none",completedAt:null,snoozedUntil:null,starred:false},
-    {id:"t7",text:"Credit card bill",color:"blue",done:false,bucket:"procrastinating",points:2,createdAt:now()-11000*60000,due:null,notes:"",subtasks:[{id:"s3",text:"Log into RBC",done:false},{id:"s4",text:"Pay Visa",done:false},{id:"s5",text:"Pay Amex",done:false}],recur:"monthly",completedAt:null,snoozedUntil:null,starred:false},
-  ];
-
-  const [colors,setColors]=useState<ColorTag[]>(DEFAULT_COLORS);
-  const [tasks,setTasks]=useState<Task[]>(INIT_TASKS);
+  const [colors,setColors]=useState<ColorTag[]>([]);
+  const [tasks,setTasks]=useState<Task[]>([]);
   const [session,setSession]=useState<string[]>([]);
   const [tab,setTab]=useState("tasks");
   const [addPanel,setAddPanel]=useState("quick");
@@ -316,37 +325,50 @@ export default function App(){
   const [showSnoozed,setShowSnoozed]=useState(false);
   const [loading,setLoading]=useState(true);
   const [loadError,setLoadError]=useState<string|null>(null);
+  const [crudInFlight,setCrudInFlight]=useState(0);
+  const crudBusy=crudInFlight>0;
   const searchRef=useRef(null);
   const timerRef=useRef<ReturnType<typeof setInterval> | null>(null);
   const hasLoadedRef=useRef(false);
+  const refreshDebounceRef=useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scoreSaveDebounceRef=useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const REFRESH_DEBOUNCE_MS = 2500;
+  const SCORE_SAVE_DEBOUNCE_MS = 5000;
+
+  const applyData=(data: api.ApiData)=>{
+    setTasks(data.tasks);
+    setColors(data.colors?.length ? data.colors : [FALLBACK_COLOR]);
+    setScoreHistory(data.scoreHistory||{});
+    const today=new Date().toISOString().slice(0,10);
+    setScore(data.scoreHistory?.[today]??0);
+    const values=Object.values(data.scoreHistory||{});
+    setHighScore(values.length?Math.max(...values):0);
+  };
+
+  const refreshFromSheets=()=>{
+    if(refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
+    refreshDebounceRef.current=setTimeout(()=>{
+      refreshDebounceRef.current=null;
+      setLoading(true);
+      api.fetchData().then(applyData).catch(()=>{}).finally(()=>setLoading(false));
+    },REFRESH_DEBOUNCE_MS);
+  };
 
   useEffect(()=>{
-    api.fetchData().then((data)=>{
-      setTasks(data.tasks.length?data.tasks:INIT_TASKS);
-      setColors(data.colors.length?data.colors:DEFAULT_COLORS);
-      setScoreHistory(data.scoreHistory||{});
-      const today=new Date().toISOString().slice(0,10);
-      const todayScore=data.scoreHistory?.[today]??0;
-      setScore(todayScore);
-      const values=Object.values(data.scoreHistory||{});
-      setHighScore(values.length?Math.max(...values):0);
-      hasLoadedRef.current=true;
-    }).catch((err)=>{ setLoadError(err.message||"Failed to load"); setTasks(INIT_TASKS); setColors(DEFAULT_COLORS); hasLoadedRef.current=true; }).finally(()=>setLoading(false));
-  },[]);
-
-  useEffect(()=>{
-    if(!hasLoadedRef.current) return;
-    const id=setInterval(()=>{
-      api.fetchData().then((data)=>{ setTasks(data.tasks); setColors(c=>c.length?data.colors:c); setScoreHistory(data.scoreHistory||{}); const today=new Date().toISOString().slice(0,10); setScore(s=>data.scoreHistory?.[today]??s); setHighScore(h=>{ const v=Object.values(data.scoreHistory||{}); return v.length?Math.max(...v):h; }); }).catch(()=>{});
-    },3000);
-    return ()=>clearInterval(id);
+    api.fetchData().then((data)=>{ applyData(data); hasLoadedRef.current=true; }).catch((err)=>{ setLoadError(err.message||"Failed to load"); setTasks([]); setColors([FALLBACK_COLOR]); hasLoadedRef.current=true; }).finally(()=>setLoading(false));
   },[]);
 
   useEffect(()=>{ const k=new Date().toISOString().slice(0,10); setScoreHistory(h=>({...h,[k]:score})); },[score]);
 
   useEffect(()=>{
     if(!hasLoadedRef.current) return;
-    api.saveScoreHistory(scoreHistory).catch(()=>{});
+    if(scoreSaveDebounceRef.current) clearTimeout(scoreSaveDebounceRef.current);
+    scoreSaveDebounceRef.current=setTimeout(()=>{
+      scoreSaveDebounceRef.current=null;
+      api.saveScoreHistory(scoreHistory).catch(()=>{});
+    },SCORE_SAVE_DEBOUNCE_MS);
+    return ()=>{ if(scoreSaveDebounceRef.current) clearTimeout(scoreSaveDebounceRef.current); };
   },[scoreHistory]);
 
   useEffect(()=>{
@@ -357,46 +379,58 @@ export default function App(){
 
   const fmt=(s: number)=>`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;
   const spawn=(e: React.SyntheticEvent)=>{ const r=(e.target as HTMLElement).getBoundingClientRect(); const id=Date.now(); setParticles(p=>[...p,{id,x:r.left+r.width/2,y:r.top+r.height/2}]); };
-  const colorMap=Object.fromEntries(colors.map(c=>[c.id,c]));
+  const colorMap=Object.fromEntries(colors.map(c=>[c.id,c])); const getColor=(id: string)=>colorMap[id]||colors[0]||FALLBACK_COLOR;
 
   const addTask=(text: string,color=newColor,bucket=newBucket,due=newDue||null,recur=newRecur)=>{
-    if(!text.trim()) return;
+    if(!text.trim()||crudBusy) return;
     const newTask={id:uid(),text:text.trim(),color,done:false,bucket,points:1,createdAt:now(),due,notes:"",subtasks:[],recur,completedAt:null,snoozedUntil:null,starred:false};
-    setTasks(p=>[...p,newTask]);
     setNewText(""); setNewDue(""); setNewRecur("none");
-    api.createTask(newTask).catch(()=>{});
+    setTab("tasks");
+    setTasks(prev=>[...prev,newTask]);
+    setCrudInFlight(c=>c+1);
+    api.createTask(newTask).then(refreshFromSheets).catch((err)=>{ setLoadError(err?.message||"Failed to add task"); setTasks(prev=>prev.filter(t=>t.id!==newTask.id)); }).finally(()=>setCrudInFlight(c=>c-1));
   };
-  const updateTask=(id: string,patch: Partial<Task>)=>{ setTasks(p=>p.map(t=>t.id===id?{...t,...patch}:t)); api.updateTask(id,patch).catch(()=>{}); };
+  const updateTask=(id: string,patch: Partial<Task>)=>{
+    if(crudBusy) return;
+    setTasks(prev=>prev.map(t=>t.id===id?{...t,...patch}:t));
+    setCrudInFlight(c=>c+1);
+    api.updateTask(id,patch).then(refreshFromSheets).catch((err)=>{ setLoadError(err?.message||"Update failed"); refreshFromSheets(); }).finally(()=>setCrudInFlight(c=>c-1));
+  };
   const snoozeTask=(id: string,until: number)=>updateTask(id,{snoozedUntil:until});
   const unsnooze=(id: string)=>updateTask(id,{snoozedUntil:null});
-  const cyclePoints=(id: string,e: React.MouseEvent)=>{ e.stopPropagation(); const task=tasks.find(t=>t.id===id); if(!task) return; const newPoints=(task.points??1)>=5?1:(task.points??1)+1; setTasks(p=>p.map(t=>t.id===id?{...t,points:newPoints}:t)); api.updateTask(id,{points:newPoints}).catch(()=>{}); };
+  const cyclePoints=(id: string,e: React.MouseEvent)=>{ e.stopPropagation(); const task=tasks.find(t=>t.id===id); if(!task) return; const newPoints=(task.points??1)>=5?1:(task.points??1)+1; updateTask(id,{points:newPoints}); };
   const completeTask=(id: string,e?: React.SyntheticEvent)=>{
     e?.stopPropagation?.();
-    const task=tasks.find(t=>t.id===id); if(!task) return;
+    const task=tasks.find(t=>t.id===id); if(!task||crudBusy) return;
     if(!task.done){
       if(e) spawn(e);
       const ns=score+(task.points||1);
       setScore(ns); setStreak(s=>s+1); if(ns>highScore) setHighScore(ns);
       if(task.recur&&task.recur!=="none"){
-        setTasks(p=>p.map(t=>t.id===id?{...t,done:true,completedAt:now()}:t));
-        setTimeout(()=>setTasks(p=>p.map(t=>t.id===id?{...t,done:false,completedAt:null,createdAt:now(),subtasks:t.subtasks.map(s=>({...s,done:false}))}:t)),2000);
+        updateTask(id,{done:true,completedAt:now()});
+        setTimeout(()=> updateTask(id,{done:false,completedAt:null,createdAt:now(),subtasks:task.subtasks.map(s=>({...s,done:false}))}),2000);
         return;
       }
     } else { setScore((s: number)=>Math.max(0,s-(task.points||1))); setStreak(0); }
-    setTasks(p=>p.map(t=>t.id===id?{...t,done:!t.done,completedAt:(!t.done?now():null) as number | null}:t));
+    updateTask(id,{done:!task.done,completedAt:(!task.done?now():null) as number | null});
   };
-  const deleteTask=(id: string)=>{ setTasks(p=>p.filter(t=>t.id!==id)); setSession(p=>p.filter(i=>i!==id)); if(openTask?.id===id) setOpenTask(null); api.deleteTask(id).catch(()=>{}); };
+  const deleteTask=(id: string)=>{
+    if(crudBusy) return;
+    setSession(p=>p.filter(i=>i!==id)); if(openTask?.id===id) setOpenTask(null); setTasks(prev=>prev.filter(t=>t.id!==id));
+    setCrudInFlight(c=>c+1);
+    api.deleteTask(id).then(refreshFromSheets).catch((err)=>{ setLoadError(err?.message||"Delete failed"); refreshFromSheets(); }).finally(()=>setCrudInFlight(c=>c-1));
+  };
 
-  const onDragStartTask=(e: React.DragEvent,id: string,ctx: string)=>{ setDragId(id); setDragCtx(ctx); e.dataTransfer.effectAllowed="move"; };
+  const onDragStartTask=(e: React.DragEvent,id: string,ctx: string)=>{ if(crudBusy){ e.preventDefault(); return; } setDragId(id); setDragCtx(ctx); e.dataTransfer.effectAllowed="move"; };
   const onDragOverTask=(e: React.DragEvent,id: string)=>{ e.preventDefault(); setDragOver(id); };
   const onDropTask=(e: React.DragEvent,targetId: string,bucket: string)=>{
     e.preventDefault(); e.stopPropagation();
     if(!dragId||dragId===targetId){setDragId(null);setDragOver(null);return;}
-    if(dragCtx==="col"){ setTasks(prev=>{ const arr=[...prev]; const fi=arr.findIndex(t=>t.id===dragId); const ti=arr.findIndex(t=>t.id===targetId); const [mv]=arr.splice(fi,1); mv.bucket=bucket; arr.splice(ti,0,mv); return arr; }); api.updateTask(dragId,{bucket}).catch(()=>{}); }
+    if(dragCtx==="col") updateTask(dragId,{bucket});
     setDragId(null); setDragOver(null);
   };
   const onDropSession=(e: React.DragEvent)=>{ e.preventDefault(); if(dragId&&!session.includes(dragId)) setSession(p=>[...p,dragId]); setDragId(null); };
-  const onDropColEmpty=(e: React.DragEvent,bucket: string)=>{ e.preventDefault(); if(dragId&&dragCtx==="col"){ setTasks(p=>p.map(t=>t.id===dragId?{...t,bucket}:t)); api.updateTask(dragId,{bucket}).catch(()=>{}); } setDragId(null); };
+  const onDropColEmpty=(e: React.DragEvent,bucket: string)=>{ e.preventDefault(); if(dragId&&dragCtx==="col") updateTask(dragId,{bucket}); setDragId(null); };
   const removeFromSession=(id: string)=>setSession(p=>p.filter(i=>i!==id));
   const lv=getLevel(score); const nxtLv=nextLevel(score);
   const activeFn=(t: Task)=>!t.done&&(!t.snoozedUntil||t.snoozedUntil<=now());
@@ -404,7 +438,8 @@ export default function App(){
   const searchResults=search.trim().length>1?tasks.filter(t=>t.text.toLowerCase().includes(search.toLowerCase())||t.notes?.toLowerCase().includes(search.toLowerCase())):[];
 
   const TaskCard=({task,bucket}: {task: Task; bucket: string})=>{
-    const c=colorMap[task.color]||colors[0];
+    const c=getColor(task.color);
+    const textOnBg=contrastTextColor(c.bg);
     const age=getAge(task.createdAt);
     const pts=task.points||1;
     const isHome=task.color==="blue";
@@ -421,7 +456,7 @@ export default function App(){
         <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
           <input type="checkbox" checked={task.done} onChange={e=>{e.stopPropagation();completeTask(task.id,e);}} onClick={e=>e.stopPropagation()} style={{marginTop:3,accentColor:c.border,width:16,height:16,cursor:"pointer",flexShrink:0}}/>
           <div style={{flex:1,filter:blurHome&&isHome?"blur(5px)":"none",transition:"filter .3s"}}>
-            <div style={{fontSize:13,fontWeight:500,color:"#1a1a2e",lineHeight:1.45,textDecoration:task.done?"line-through":"none"}}>{task.starred&&<span style={{marginRight:4}}>⭐</span>}{task.text}</div>
+            <div style={{fontSize:13,fontWeight:500,color:textOnBg,lineHeight:1.45,textDecoration:task.done?"line-through":"none"}}>{task.starred&&<span style={{marginRight:4}}>⭐</span>}{task.text}</div>
             <div style={{display:"flex",gap:5,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
               <span style={{fontSize:11,color:c.border,fontWeight:600}}>{c.label}</span>
               <AgeTag age={age}/>
@@ -481,18 +516,29 @@ export default function App(){
   const TimerTaskPanel=({taskId}: {taskId: string | undefined})=>{
     const task=tasks.find(t=>t.id===taskId);
     if(!task) return <div style={{color:"#444",fontSize:13,textAlign:"center",background:"#1a1a2a",borderRadius:12,height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>← Select a task from the queue</div>;
-    const c=colorMap[task.color]||colors[0];
+    const c=getColor(task.color);
     const pts=task.points||1;
     const subDone=task.subtasks.filter(s=>s.done).length;
     const [showSnooze,setShowSnooze]=useState(false);
     const [newSub,setNewSub]=useState("");
+    const [localNotes,setLocalNotes]=useState(task.notes||"");
+    const notesDebounceRef=useRef<ReturnType<typeof setTimeout>|null>(null);
+    useEffect(()=>{ setLocalNotes(task.notes||""); },[task.id,task.notes]);
+    useEffect(()=>{
+      if(localNotes===(task.notes||"")) return;
+      if(notesDebounceRef.current) clearTimeout(notesDebounceRef.current);
+      const tid=task.id;
+      const notesToSave=localNotes;
+      notesDebounceRef.current=setTimeout(()=>{ updateTask(tid,{notes:notesToSave}); notesDebounceRef.current=null; },800);
+      return ()=>{ if(notesDebounceRef.current) clearTimeout(notesDebounceRef.current); };
+    },[localNotes,task.id,task.notes]);
     const addSub=()=>{ if(!newSub.trim()) return; updateTask(task.id,{subtasks:[...task.subtasks,{id:`s${Date.now()}`,text:newSub.trim(),done:false}]}); setNewSub(""); };
     return(
       <div style={{background:"#1a1a2a",borderRadius:12,overflow:"hidden",height:"100%",display:"flex",flexDirection:"column"}}>
         <div style={{background:c.bg,padding:"16px 18px",borderBottom:`3px solid ${c.border}`}}>
           <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
             <div style={{flex:1}}>
-              <div style={{fontSize:15,fontWeight:700,color:"#1a1a2e",lineHeight:1.4}}>{task.starred&&<span style={{marginRight:4}}>⭐</span>}{task.text}</div>
+              <div style={{fontSize:15,fontWeight:700,color:contrastTextColor(c.bg),lineHeight:1.4}}>{task.starred&&<span style={{marginRight:4}}>⭐</span>}{task.text}</div>
               <div style={{display:"flex",gap:6,marginTop:6,flexWrap:"wrap",alignItems:"center"}}>
                 <span style={{fontSize:11,fontWeight:700,color:c.border}}>{c.label}</span>
                 {task.due&&dueColor(task.due)&&<span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:20,background:dueColor(task.due)!,color:"#fff"}}>📅 {dueLabel(task.due)}</span>}
@@ -528,7 +574,7 @@ export default function App(){
           </div>
           <div>
             <div style={{fontSize:11,fontWeight:800,color:"#aaa",letterSpacing:.5,marginBottom:8}}>NOTES</div>
-            <textarea value={task.notes||""} onChange={e=>updateTask(task.id,{notes:e.target.value})} placeholder="Notes, links, context..." rows={5} style={{width:"100%",background:"rgba(255,255,255,.04)",border:"1px solid #2a2a40",borderRadius:8,padding:"10px",color:"#ccc",fontSize:12,resize:"none",boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.5,outline:"none"}}/>
+            <textarea value={localNotes} onChange={e=>setLocalNotes(e.target.value)} placeholder="Notes, links, context..." rows={5} style={{width:"100%",background:"rgba(255,255,255,.04)",border:"1px solid #2a2a40",borderRadius:8,padding:"10px",color:"#ccc",fontSize:12,resize:"none",boxSizing:"border-box",fontFamily:"inherit",lineHeight:1.5,outline:"none"}}/>
           </div>
         </div>
       </div>
@@ -540,27 +586,35 @@ export default function App(){
   return(
     <div style={{fontFamily:"system-ui,sans-serif",background:"#12121E",height:"100vh",display:"flex",flexDirection:"column",overflow:"hidden",color:"#fff"}}>
       {loading&&<div style={{background:"#6366F1",color:"#fff",padding:"6px 20px",fontSize:12,fontWeight:700,textAlign:"center"}}>Loading...</div>}
-      {loadError&&<div style={{background:"#EF4444",color:"#fff",padding:"6px 20px",fontSize:12,textAlign:"center"}}>{loadError} — using local data.</div>}
+      {crudBusy&&<div style={{background:"#F59E0B",color:"#1a1a2e",padding:"6px 20px",fontSize:12,fontWeight:700,textAlign:"center"}}>Saving to Sheets…</div>}
+      {crudBusy&&<div style={{position:"fixed",inset:0,zIndex:9999,background:"rgba(0,0,0,.45)",pointerEvents:"auto",cursor:"wait"}} aria-hidden="true"/>}
+      {loadError&&<div style={{background:"#EF4444",color:"#fff",padding:"10px 20px",fontSize:13,textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",gap:12,flexWrap:"wrap"}}><span style={{flex:1,minWidth:0}}>{loadError}</span><button type="button" onClick={()=>{ setLoadError(null); setLoading(true); api.fetchData().then(applyData).then(()=>setLoadError(null)).catch((err)=>setLoadError(err?.message||"Retry failed")).finally(()=>setLoading(false)); }} style={{background:"rgba(255,255,255,.2)",border:"none",color:"#fff",padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:12}}>Retry</button><button type="button" onClick={()=>setLoadError(null)} style={{background:"rgba(255,255,255,.2)",border:"none",color:"#fff",padding:"4px 10px",borderRadius:6,cursor:"pointer",fontSize:12}}>Dismiss</button></div>}
       {particles.map(p=><Confetti key={p.id} x={p.x} y={p.y} onDone={()=>setParticles(q=>q.filter(r=>r.id!==p.id))}/>)}
       {particles.map(p=><ScorePop key={`s${p.id}`} x={p.x} y={p.y} onDone={()=>{}}/>)}
       {liveOpenTask&&<TaskDrawer task={liveOpenTask} colors={colors} onClose={()=>setOpenTask(null)} onUpdate={updateTask} onComplete={completeTask} onSnooze={snoozeTask}/>}
       {showSummary&&<SummaryModal tasks={tasks} score={score} highScore={highScore} streak={streak} history={scoreHistory} onClose={()=>setShowSummary(false)}/>}
-      {showColorEditor&&<ColorEditor colors={colors} onChange={(newColors: ColorTag[])=>{ setColors(newColors); api.saveColors(newColors).catch(()=>{}); }} onClose={()=>setShowColorEditor(false)}/>}
+      {showColorEditor&&<ColorEditor colors={colors} onChange={(newColors: ColorTag[])=>{ if(crudBusy) return; setColors(newColors); setCrudInFlight(c=>c+1); api.saveColors(newColors).then(refreshFromSheets).catch((err)=>{ setLoadError(err?.message||"Failed to save tags"); refreshFromSheets(); }).finally(()=>setCrudInFlight(c=>c-1)); }} onClose={()=>setShowColorEditor(false)}/>}
 
       {showSearch&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.7)",zIndex:500,display:"flex",flexDirection:"column",alignItems:"center",paddingTop:80}} onClick={()=>{setShowSearch(false);setSearch("");}}>
           <div onClick={e=>e.stopPropagation()} style={{width:500,maxWidth:"90vw"}}>
             <input ref={searchRef} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search tasks and notes..." style={{width:"100%",background:"#1a1a2a",border:"2px solid #6366F1",borderRadius:12,padding:"14px 18px",fontSize:16,color:"#fff",outline:"none",boxSizing:"border-box"}}/>
-            {searchResults.length>0&&<div style={{background:"#1a1a2a",borderRadius:12,marginTop:8,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.5)"}}>
-              {searchResults.map(t=>{ const c=colorMap[t.color]||colors[0]; return(
-                <div key={t.id} onClick={()=>{setOpenTask(t);setShowSearch(false);setSearch("");}} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",borderBottom:"1px solid #252535",cursor:"pointer"}}
-                  onMouseEnter={e=>e.currentTarget.style.background="#252535"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <span style={{width:8,height:8,borderRadius:"50%",background:c.dot,flexShrink:0}}/>
-                  <span style={{flex:1,fontSize:14,color:"#ccc"}}>{t.text}</span>
-                  <span style={{fontSize:11,color:c.border,fontWeight:600}}>{c.label}</span>
+            {search.trim().length>1&&(
+              searchResults.length>0 ? (
+                <div style={{background:"#1a1a2a",borderRadius:12,marginTop:8,overflow:"hidden",boxShadow:"0 8px 32px rgba(0,0,0,.5)"}}>
+                  {searchResults.map(t=>{ const c=getColor(t.color); return(
+                    <div key={t.id} onClick={()=>{setOpenTask(t);setShowSearch(false);setSearch("");}} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",borderBottom:"1px solid #252535",cursor:"pointer"}}
+                      onMouseEnter={e=>e.currentTarget.style.background="#252535"} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                      <span style={{width:8,height:8,borderRadius:"50%",background:c.dot,flexShrink:0}}/>
+                      <span style={{flex:1,fontSize:14,color:"#ccc"}}>{t.text}</span>
+                      <span style={{fontSize:11,color:c.border,fontWeight:600}}>{c.label}</span>
+                    </div>
+                  );})}
                 </div>
-              );})}
-            </div>}
+              ) : (
+                <div style={{background:"#1a1a2a",borderRadius:12,marginTop:8,padding:16,color:"#666",fontSize:13,textAlign:"center"}}>No tasks match “{search}”</div>
+              )
+            )}
           </div>
         </div>
       )}
@@ -618,10 +672,10 @@ export default function App(){
                 </button>
                 {showSnoozed&&(
                   <div style={{padding:"0 12px 12px",display:"flex",flexWrap:"wrap",gap:8}}>
-                    {snoozedTasks.map(t=>{ const c=colorMap[t.color]||colors[0]; const sl=snoozeLabel(t.snoozedUntil); return(
+                    {snoozedTasks.map(t=>{ const c=getColor(t.color); const sl=snoozeLabel(t.snoozedUntil); return(
                       <div key={t.id} style={{display:"flex",alignItems:"center",gap:8,background:c.bg,border:`1.5px solid ${c.border}`,borderRadius:10,padding:"8px 12px",cursor:"pointer"}} onClick={()=>setOpenTask(t)}>
                         <span style={{width:7,height:7,borderRadius:"50%",background:c.dot}}/>
-                        <span style={{fontSize:12,color:"#1a1a2e",fontWeight:500}}>{t.text}</span>
+                        <span style={{fontSize:12,color:contrastTextColor(c.bg),fontWeight:500}}>{t.text}</span>
                         <span style={{fontSize:10,color:"#818CF8",fontWeight:700}}>⏰ {sl}</span>
                         <button onClick={e=>{e.stopPropagation();unsnooze(t.id);}} style={{background:"none",border:"none",color:"#888",cursor:"pointer",fontSize:12,padding:0}}>↩</button>
                       </div>
@@ -639,11 +693,11 @@ export default function App(){
               <div onDragOver={e=>e.preventDefault()} onDrop={onDropSession} style={{border:"2px dashed #6366F1",borderRadius:12,padding:12,background:"#1a1a2a",flex:1,minHeight:100}}>
                 <div style={{fontSize:11,color:"#a5b4fc",fontWeight:700,marginBottom:8,letterSpacing:.5}}>🍅 SESSION QUEUE</div>
                 {session.length===0&&<div style={{color:"#444",fontSize:12,textAlign:"center",paddingTop:12}}>Drag tasks here</div>}
-                {session.map((id,i)=>{ const task=tasks.find(t=>t.id===id); if(!task) return null; const c=colorMap[task.color]||colors[0]; const isActive=i===pomoIdx; return(
+                {session.map((id,i)=>{ const task=tasks.find(t=>t.id===id); if(!task) return null; const c=getColor(task.color); const isActive=i===pomoIdx; return(
                   <div key={id} onClick={()=>setPomoIdx(i)} style={{background:isActive?c.bg:"#252535",border:`1.5px solid ${isActive?c.border:"#333"}`,borderRadius:8,padding:"8px 10px",marginBottom:5,display:"flex",alignItems:"center",gap:7,cursor:"pointer"}}>
-                    <span style={{fontSize:11,color:"#a5b4fc",fontWeight:700,width:16}}>{i+1}</span>
+                    <span style={{fontSize:11,color:isActive?contrastTextColor(c.bg):"#a5b4fc",fontWeight:700,width:16}}>{i+1}</span>
                     <span style={{width:7,height:7,borderRadius:"50%",background:c.dot}}/>
-                    <span style={{flex:1,fontSize:12,color:isActive?"#1a1a2e":"#ccc",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{task.text}</span>
+                    <span style={{flex:1,fontSize:12,color:isActive?contrastTextColor(c.bg):"#ccc",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{task.text}</span>
                     <button onClick={e=>{e.stopPropagation();removeFromSession(id);}} style={{background:"none",border:"none",color:"#555",cursor:"pointer",fontSize:15,padding:0}}>×</button>
                   </div>
                 );})}
@@ -668,7 +722,7 @@ export default function App(){
           <div style={{flex:1,overflowY:"auto",padding:20}}>
             <div style={{fontSize:13,fontWeight:800,color:"#aaa",letterSpacing:.5,marginBottom:16}}>COMPLETED THIS SESSION</div>
             {tasks.filter((t: Task)=>t.done&&t.completedAt!=null).sort((a,b)=>(b.completedAt??0)-(a.completedAt??0)).length===0&&<div style={{color:"#444",fontSize:13,textAlign:"center",marginTop:40}}>No completed tasks yet — go crush some! 💪</div>}
-            {tasks.filter((t: Task)=>t.done&&t.completedAt!=null).sort((a,b)=>(b.completedAt??0)-(a.completedAt??0)).map(t=>{ const c=colorMap[t.color]||colors[0]; const time=new Date(t.completedAt!).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}); return(
+            {tasks.filter((t: Task)=>t.done&&t.completedAt!=null).sort((a,b)=>(b.completedAt??0)-(a.completedAt??0)).map(t=>{ const c=getColor(t.color); const time=new Date(t.completedAt!).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}); return(
                 <div key={t.id} onClick={()=>setOpenTask(t as Task)} style={{display:"flex",alignItems:"center",gap:10,background:"#1a1a2a",border:"1px solid #252535",borderRadius:10,padding:"10px 14px",marginBottom:8,cursor:"pointer"}}
                 onMouseEnter={e=>e.currentTarget.style.background="#252535"} onMouseLeave={e=>e.currentTarget.style.background="#1a1a2a"}>
                 <span style={{fontSize:16}}>✓</span>
@@ -695,7 +749,7 @@ export default function App(){
                 ))}
               </div>
               <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:12,alignItems:"center"}}>
-                {colors.map(c=><button key={c.id} onClick={()=>setNewColor(c.id)} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 8px",borderRadius:20,border:newColor===c.id?`2px solid ${c.border}`:"1px solid #333",background:newColor===c.id?c.bg:"#252535",cursor:"pointer",fontSize:11,fontWeight:newColor===c.id?700:400,color:newColor===c.id?"#1a1a2e":"#888"}}><span style={{width:7,height:7,borderRadius:"50%",background:c.dot,display:"inline-block"}}/>{c.label}</button>)}
+                {colors.map(c=><button key={c.id} onClick={()=>setNewColor(c.id)} style={{display:"flex",alignItems:"center",gap:4,padding:"4px 8px",borderRadius:20,border:newColor===c.id?`2px solid ${c.border}`:"1px solid #333",background:newColor===c.id?c.bg:"#252535",cursor:"pointer",fontSize:11,fontWeight:newColor===c.id?700:400,color:newColor===c.id?contrastTextColor(c.bg):"#888"}}><span style={{width:7,height:7,borderRadius:"50%",background:c.dot,display:"inline-block"}}/>{c.label}</button>)}
                 <button onClick={()=>setShowColorEditor(true)} style={{background:"rgba(255,255,255,.05)",border:"1px solid #333",borderRadius:20,color:"#555",cursor:"pointer",fontSize:11,padding:"4px 8px"}}>✏️ Edit</button>
               </div>
               {addPanel==="quick"&&<div>
@@ -734,8 +788,8 @@ export default function App(){
       {tab==="tasks"&&(
         <div onDragOver={e=>e.preventDefault()} onDrop={onDropSession} style={{background:"#1E1E2E",borderTop:"1px solid #2a2a40",padding:"8px 20px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",flexShrink:0,minHeight:50}}>
           <span style={{fontSize:12,color:session.length?"#a5b4fc":"#444",fontWeight:700,flexShrink:0}}>🍅 {session.length===0?"Drop tasks here for Timer →":`Timer queue (${session.length})`}</span>
-          {session.map(id=>{ const task=tasks.find(t=>t.id===id); if(!task) return null; const c=colorMap[task.color]||colors[0]; return(
-            <div key={id} style={{display:"flex",alignItems:"center",gap:4,background:c.bg,border:`1.5px solid ${c.border}`,borderRadius:20,padding:"3px 8px 3px 6px",fontSize:11,color:"#1a1a2e",maxWidth:160,overflow:"hidden"}}>
+          {session.map(id=>{ const task=tasks.find(t=>t.id===id); if(!task) return null; const c=getColor(task.color); return(
+            <div key={id} style={{display:"flex",alignItems:"center",gap:4,background:c.bg,border:`1.5px solid ${c.border}`,borderRadius:20,padding:"3px 8px 3px 6px",fontSize:11,color:contrastTextColor(c.bg),maxWidth:160,overflow:"hidden"}}>
               <span style={{width:6,height:6,borderRadius:"50%",background:c.dot}}/>
               <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{task.text}</span>
               <button onClick={()=>removeFromSession(id)} style={{background:"none",border:"none",color:"#999",cursor:"pointer",fontSize:13,padding:0,marginLeft:2}}>×</button>

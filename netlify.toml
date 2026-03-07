@@ -3,6 +3,10 @@
   publish = "dist"
   functions = "netlify/functions"
 
+[dev]
+  targetPort = 5173
+  command = "npm run dev"
+
 [[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/api"
